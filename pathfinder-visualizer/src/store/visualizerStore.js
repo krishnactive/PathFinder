@@ -1,39 +1,45 @@
 import { create } from "zustand";
-import { bfs } from "../algorithms/bfs";
-import { dfs } from "../algorithms/dfs";
-import { dijkstra } from "../algorithms/dijkstra";
-import { astar } from "../algorithms/astar";
+import { bfs as gridBfs } from "../algorithms/bfs";
+import { dfs as gridDfs } from "../algorithms/dfs";
+import { dijkstra as gridDijkstra } from "../algorithms/dijkstra";
+import { astar as gridAstar } from "../algorithms/astar";
+
+import { bfs as graphBfs } from "../algorithms/graph/bfs";
+import { dfs as graphDfs } from "../algorithms/graph/dfs";
+import { dijkstra as graphDijkstra } from "../algorithms/graph/dijkstra.js";
+import { astar as graphAstar } from "../algorithms/graph/astar.js";
+
 import { generateRandomMaze, recursiveDivisionMaze } from "../utils/mazeGenerators";
 
-// Map latest log line -> pseudocode line index (0..6)
+// ---------- Helpers ----------
 function lineFromLog(algorithm, text) {
   const t = text || "";
   if (algorithm === "bfs") {
     if (t.startsWith("BFS —")) return 0;
-    if (t.startsWith("Visit (")) return 2;
-    if (t.startsWith("Enqueue (")) return 6;
+    if (t.startsWith("Visit ")) return 2;
+    if (t.startsWith("Enqueue ") || t.startsWith("Push ")) return 6;
     if (t.startsWith("Reached the end")) return 3;
     if (t.startsWith("No path")) return 1;
     return 1;
   }
   if (algorithm === "dfs") {
     if (t.startsWith("DFS —")) return 0;
-    if (t.startsWith("Visit (")) return 2;
-    if (t.startsWith("Push (")) return 6;
+    if (t.startsWith("Visit ")) return 2;
+    if (t.startsWith("Push ")) return 6;
     if (t.startsWith("Reached the end")) return 3;
     if (t.startsWith("No path")) return 1;
     return 1;
   }
   if (algorithm === "dijkstra") {
     if (t.startsWith("Dijkstra —")) return 0;
-    if (t.startsWith("Visit (")) return 2;
+    if (t.startsWith("Visit ")) return 2;
     if (t.startsWith("Relax")) return 6;
     if (t.startsWith("No path")) return 1;
     return 1;
   }
   if (algorithm === "astar") {
     if (t.startsWith("A* —")) return 0;
-    if (t.startsWith("Visit (")) return 2;
+    if (t.startsWith("Visit ")) return 2;
     if (t.startsWith("Relax")) return 6;
     if (t.startsWith("No path")) return 1;
     return 1;
@@ -41,7 +47,7 @@ function lineFromLog(algorithm, text) {
   return 0;
 }
 
-function sumPathCost(grid, path) {
+function sumGridPathCost(grid, path) {
   if (!path || !path.length) return 0;
   let sum = 0;
   for (let i = 1; i < path.length; i++) {
@@ -51,14 +57,28 @@ function sumPathCost(grid, path) {
   return sum;
 }
 
-// THEME helpers
+function sumGraphPathCost(graph, path) {
+  if (!path || path.length < 2) return 0;
+  let sum = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const e = graph.edges.find(
+      (ed) =>
+        (ed.from === a && ed.to === b) || (ed.from === b && ed.to === a)
+    );
+    sum += e ? (e.weight ?? 1) : 0;
+  }
+  return sum;
+}
+
+// THEME (already used in your app)
 const THEME_KEY = "pf_theme";
 function readInitialTheme() {
   try {
     const t = localStorage.getItem(THEME_KEY);
     if (t === "dark" || t === "light") return t;
   } catch {}
-  return "dark"; // default
+  return "dark";
 }
 function applyThemeToDom(theme) {
   const root = document.documentElement;
@@ -66,31 +86,68 @@ function applyThemeToDom(theme) {
   else root.classList.remove("dark");
 }
 
+// ---------- Store ----------
 const useVisualizerStore = create((set, get) => ({
+  // Modes
+  mode: "grid", // "grid" | "graph"
+  setMode: (m) =>
+    set({
+      mode: m === "graph" ? "graph" : "grid",
+      // Clear playback whenever mode changes
+      steps: [],
+      stepIndex: -1,
+      visitedNodes: [],
+      pathNodes: [],
+      logs: [],
+      currentPseudoLine: 0,
+      isPlaying: false,
+      runId: get().runId + 1,
+    }),
+
   // Theme
   theme: readInitialTheme(),
   setTheme: (theme) => {
     const t = theme === "light" ? "light" : "dark";
     set({ theme: t });
-    try { localStorage.setItem(THEME_KEY, t); } catch {}
+    try {
+      localStorage.setItem(THEME_KEY, t);
+    } catch {}
     applyThemeToDom(t);
   },
 
-  // Grid & algorithms
+  // Grid state
   rows: 8,
   cols: 8,
   grid: [],
-  visitedNodes: [],
-  pathNodes: [],
+
+  // Graph state
+  graph: {
+    nodes: [
+      // { id: "A", x: 100, y: 140 }
+    ],
+    edges: [
+      // { id: "A-B", from: "A", to: "B", weight: 1 }
+    ],
+    startId: null,
+    endId: null,
+    snap: true,
+  },
+  setGraphSnap: (v) => set((s) => ({ graph: { ...s.graph, snap: !!v } })),
+
+  // Selection (graph)
+  selectedNodeId: null,
+  selectedEdgeId: null,
+
+  // Teaching/animation shared
+  visitedNodes: [], // grid: [r,c] ; graph: node ids
+  pathNodes: [],    // grid: [r,c] ; graph: node ids
   logs: [],
   algorithm: "bfs",
-
-  // Teaching & animation config
-  animationSpeed: 50, // 1..100
+  animationSpeed: 50,
   currentPseudoLine: 0,
 
-  // Zoom controls
-  zoomMode: "fit",   // "fit" | "fixed"
+  // Zoom (grid)
+  zoomMode: "fit",
   zoomFactor: 1.0,
   setZoomMode: (mode) => set({ zoomMode: mode }),
   setZoomFactor: (f) => {
@@ -98,26 +155,23 @@ const useVisualizerStore = create((set, get) => ({
     set({ zoomFactor: z });
   },
 
-  // Fast solve
+  // Fast solve + playback
   fastSolve: false,
   setFastSolve: (v) => set({ fastSolve: !!v }),
-
-  // Run / playback control
   runId: 0,
   isPlaying: false,
   steps: [],
   stepIndex: -1,
   _allLogs: [],
-  // progress
   currentStep: 0,
   totalSteps: 0,
 
-  // META for tooltips
-  meta: {},            // {dist,parent} or {g,h,f,parent}
+  // Meta for tooltips/stats
+  meta: {},
   pathCost: 0,
   pathLength: 0,
 
-  // ===== Initialization & Settings =====
+  // ---------- Grid init ----------
   initializeGrid: (rows, cols) => {
     const grid = Array.from({ length: rows }, () =>
       Array.from({ length: cols }, () => ({ type: "path", weight: 1 }))
@@ -126,25 +180,14 @@ const useVisualizerStore = create((set, get) => ({
     grid[rows - 1][cols - 1] = { type: "end", weight: 0 };
 
     set({
-      rows, cols, grid,
-      visitedNodes: [], pathNodes: [], logs: [],
+      rows,
+      cols,
+      grid,
+      visitedNodes: [],
+      pathNodes: [],
+      logs: [],
       currentPseudoLine: 0,
-      isPlaying: false, steps: [], stepIndex: -1, _allLogs: [],
-      currentStep: 0, totalSteps: 0,
-      meta: {}, pathCost: 0, pathLength: 0,
-    });
-  },
-
-  setSize: (rows, cols) => {
-    const r = Math.max(3, Math.min(60, Number(rows) || 8));
-    const c = Math.max(3, Math.min(60, Number(cols) || 8));
-    get().initializeGrid(r, c);
-  },
-
-  setAlgorithm: (algo) =>
-    set({
-      algorithm: algo,
-      currentPseudoLine: 0,
+      isPlaying: false,
       steps: [],
       stepIndex: -1,
       _allLogs: [],
@@ -153,24 +196,126 @@ const useVisualizerStore = create((set, get) => ({
       meta: {},
       pathCost: 0,
       pathLength: 0,
-    }),
-
-  setAnimationSpeed: (val) => {
-    const v = Math.max(1, Math.min(100, Number(val) || 50));
-    set({ animationSpeed: v });
+    });
+  },
+  setSize: (rows, cols) => {
+    const r = Math.max(3, Math.min(60, Number(rows) || 8));
+    const c = Math.max(3, Math.min(60, Number(cols) || 8));
+    get().initializeGrid(r, c);
   },
 
-  _delays() {
-    const sp = get().animationSpeed;
-    const visitDelay = Math.max(5, 205 - sp * 2);
-    return { visitDelay };
+  // ---------- Graph helpers ----------
+  _graphNewNodeId() {
+    const used = new Set(get().graph.nodes.map((n) => n.id));
+    // Try alphabet then numbers
+    for (const ch of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+      if (!used.has(ch)) return ch;
+    }
+    let i = 1;
+    while (used.has(String(i))) i++;
+    return String(i);
+  },
+  graphAddNode(x, y) {
+    const { graph } = get();
+    const id = get()._graphNewNodeId();
+    const snap = graph.snap ? 20 : 1;
+    const nx = Math.round(x / snap) * snap;
+    const ny = Math.round(y / snap) * snap;
+    const nodes = [...graph.nodes, { id, x: nx, y: ny }];
+    set({ graph: { ...graph, nodes } });
+  },
+  graphMoveNode(id, x, y) {
+    const { graph } = get();
+    const snap = graph.snap ? 20 : 1;
+    const nx = Math.round(x / snap) * snap;
+    const ny = Math.round(y / snap) * snap;
+    const nodes = graph.nodes.map((n) => (n.id === id ? { ...n, x: nx, y: ny } : n));
+    set({ graph: { ...graph, nodes } });
+  },
+  graphConnect(fromId, toId, weight = 1) {
+    if (!fromId || !toId || fromId === toId) return;
+    const { graph } = get();
+    const exists = graph.edges.some(
+      (e) =>
+        (e.from === fromId && e.to === toId) ||
+        (e.from === toId && e.to === fromId)
+    );
+    if (exists) return;
+    const id = `${fromId}-${toId}`;
+    const edges = [...graph.edges, { id, from: fromId, to: toId, weight: Number(weight) || 1 }];
+    set({ graph: { ...graph, edges } });
+  },
+  graphSetEdgeWeight(edgeId, w) {
+    const { graph } = get();
+    const edges = graph.edges.map((e) => (e.id === edgeId ? { ...e, weight: Math.max(1, Number(w) || 1) } : e));
+    set({ graph: { ...graph, edges } });
+  },
+  graphDeleteSelection() {
+    const { selectedNodeId, selectedEdgeId, graph } = get();
+    if (selectedNodeId) {
+      const nodes = graph.nodes.filter((n) => n.id !== selectedNodeId);
+      const edges = graph.edges.filter(
+        (e) => e.from !== selectedNodeId && e.to !== selectedNodeId
+      );
+      const startId = graph.startId === selectedNodeId ? null : graph.startId;
+      const endId = graph.endId === selectedNodeId ? null : graph.endId;
+      set({
+        graph: { ...graph, nodes, edges, startId, endId },
+        selectedNodeId: null,
+      });
+    } else if (selectedEdgeId) {
+      const edges = graph.edges.filter((e) => e.id !== selectedEdgeId);
+      set({ graph: { ...graph, edges }, selectedEdgeId: null });
+    }
+  },
+  graphSelectNode(id) {
+    set({ selectedNodeId: id, selectedEdgeId: null });
+  },
+  graphSelectEdge(id) {
+    set({ selectedEdgeId: id, selectedNodeId: null });
+  },
+  graphSetStart(id) {
+    set((s) => ({ graph: { ...s.graph, startId: id || null } }));
+  },
+  graphSetEnd(id) {
+    set((s) => ({ graph: { ...s.graph, endId: id || null } }));
+  },
+  graphClear() {
+    set({
+      graph: { nodes: [], edges: [], startId: null, endId: null, snap: true },
+      selectedNodeId: null,
+      selectedEdgeId: null,
+    });
+  },
+  graphExport() {
+    const { graph } = get();
+    return JSON.stringify(graph, null, 2);
+  },
+  graphImport(obj) {
+    try {
+      const graph = typeof obj === "string" ? JSON.parse(obj) : obj;
+      if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges))
+        return;
+      set({
+        graph: {
+          nodes: graph.nodes.map((n) => ({ id: String(n.id), x: Number(n.x), y: Number(n.y) })),
+          edges: graph.edges.map((e) => ({
+            id: String(e.id),
+            from: String(e.from),
+            to: String(e.to),
+            weight: Math.max(1, Number(e.weight) || 1),
+          })),
+          startId: graph.startId || null,
+          endId: graph.endId || null,
+          snap: !!graph.snap,
+        },
+        selectedNodeId: null,
+        selectedEdgeId: null,
+      });
+    } catch {}
   },
 
-  _updateProgress(i) {
-    const total = get().steps.length;
-    set({ currentStep: Math.max(0, Math.min(total, i + 1)), totalSteps: total });
-  },
-
+  // ---------- Grid editing (clear playback) ----------
   _invalidateRunAndClear() {
     const nextId = get().runId + 1;
     set({
@@ -190,21 +335,23 @@ const useVisualizerStore = create((set, get) => ({
       pathLength: 0,
     });
   },
-
-  toggleCell: (row, col) => {
+  toggleCell(row, col) {
+    if (get().mode !== "grid") return;
     const { grid } = get();
     const newGrid = grid.map((r) => r.map((c) => ({ ...c })));
     const cell = newGrid[row][col];
     if (cell.type === "start" || cell.type === "end") return;
 
     newGrid[row][col] =
-      cell.type === "wall" ? { type: "path", weight: 1 } : { type: "wall", weight: Infinity };
+      cell.type === "wall"
+        ? { type: "path", weight: 1 }
+        : { type: "wall", weight: Infinity };
 
     set({ grid: newGrid });
     get()._invalidateRunAndClear();
   },
-
-  cycleWeight: (row, col) => {
+  cycleWeight(row, col) {
+    if (get().mode !== "grid") return;
     const { grid } = get();
     const newGrid = grid.map((r) => r.map((c) => ({ ...c })));
     const cell = newGrid[row][col];
@@ -217,8 +364,8 @@ const useVisualizerStore = create((set, get) => ({
     set({ grid: newGrid });
     get()._invalidateRunAndClear();
   },
-
-  setWeightManually: (row, col, weight) => {
+  setWeightManually(row, col, weight) {
+    if (get().mode !== "grid") return;
     const { grid } = get();
     const newGrid = grid.map((r) => r.map((c) => ({ ...c })));
     const cell = newGrid[row][col];
@@ -231,18 +378,64 @@ const useVisualizerStore = create((set, get) => ({
     get()._invalidateRunAndClear();
   },
 
-  // ===== Build steps from an algorithm result =====
-  _computeResult() {
-    const { grid, algorithm } = get();
-    if (algorithm === "bfs") return bfs(grid);
-    if (algorithm === "dfs") return dfs(grid);
-    if (algorithm === "dijkstra") return dijkstra(grid);
-    if (algorithm === "astar") return astar(grid);
-    return { visitedOrder: [], shortestPath: [], logs: [], meta: {} };
+  // ---------- Settings ----------
+  setAlgorithm: (algo) =>
+    set({
+      algorithm: algo,
+      currentPseudoLine: 0,
+      steps: [],
+      stepIndex: -1,
+      _allLogs: [],
+      currentStep: 0,
+      totalSteps: 0,
+      meta: {},
+      pathCost: 0,
+      pathLength: 0,
+    }),
+  setAnimationSpeed: (val) => {
+    const v = Math.max(1, Math.min(100, Number(val) || 50));
+    set({ animationSpeed: v });
+  },
+  _delays() {
+    const sp = get().animationSpeed;
+    const visitDelay = Math.max(5, 205 - sp * 2);
+    return { visitDelay };
+  },
+  _updateProgress(i) {
+    const total = get().steps.length;
+    set({ currentStep: Math.max(0, Math.min(total, i + 1)), totalSteps: total });
   },
 
+  // ---------- Build steps ----------
+  _computeResult() {
+    const { mode, grid, algorithm, graph } = get();
+    if (mode === "grid") {
+      if (algorithm === "bfs") return gridBfs(grid);
+      if (algorithm === "dfs") return gridDfs(grid);
+      if (algorithm === "dijkstra") return gridDijkstra(grid);
+      if (algorithm === "astar") return gridAstar(grid);
+      return { visitedOrder: [], shortestPath: [], logs: [], meta: {} };
+    } else {
+      const startId = graph.startId || (graph.nodes[0]?.id ?? null);
+      const endId = graph.endId || (graph.nodes[graph.nodes.length - 1]?.id ?? null);
+      const ctx = { nodes: graph.nodes, edges: graph.edges, startId, endId };
+      if (!startId || !endId) {
+        return {
+          visitedOrder: [],
+          shortestPath: [],
+          logs: ["[Graph] Please set Start and End nodes."],
+          meta: {},
+        };
+      }
+      if (algorithm === "bfs") return graphBfs(ctx);
+      if (algorithm === "dfs") return graphDfs(ctx);
+      if (algorithm === "dijkstra") return graphDijkstra(ctx);
+      if (algorithm === "astar") return graphAstar(ctx);
+      return { visitedOrder: [], shortestPath: [], logs: [], meta: {} };
+    }
+  },
   _buildStepsFromResult(result) {
-    const { algorithm, grid } = get();
+    const { algorithm, grid, mode, graph } = get();
     const { visitedOrder, shortestPath, logs, meta } = result;
     const steps = [];
 
@@ -255,7 +448,6 @@ const useVisualizerStore = create((set, get) => ({
         line: lineFromLog(algorithm, latestLog),
       });
     }
-
     for (let j = 0; j < (shortestPath?.length || 0); j++) {
       steps.push({
         visited: visitedOrder.slice(),
@@ -265,12 +457,14 @@ const useVisualizerStore = create((set, get) => ({
       });
     }
 
-    const pathCost = sumPathCost(grid, shortestPath);
+    let pathCost = 0;
+    if (mode === "grid") pathCost = sumGridPathCost(grid, shortestPath);
+    else pathCost = sumGraphPathCost(graph, shortestPath);
+
     const pathLength = shortestPath?.length || 0;
 
     return { steps, logs, shortestPath, meta, pathCost, pathLength };
   },
-
   _applyStepIndex(i) {
     const { steps, _allLogs } = get();
     if (i < 0 || steps.length === 0) {
@@ -295,7 +489,7 @@ const useVisualizerStore = create((set, get) => ({
     get()._updateProgress(i);
   },
 
-  // ===== Public playback API =====
+  // ---------- Public playback API ----------
   rebuildSteps: () => {
     const res = get()._computeResult();
     const built = get()._buildStepsFromResult(res);
@@ -316,38 +510,32 @@ const useVisualizerStore = create((set, get) => ({
       pathLength: built.pathLength || 0,
     });
   },
-
   stepForward: () => {
     if (!get().steps.length) get().rebuildSteps();
     const { stepIndex, steps } = get();
-    const next = Math.min((stepIndex < 0 ? 0 : stepIndex + 1), steps.length - 1);
+    const next = Math.min(stepIndex < 0 ? 0 : stepIndex + 1, steps.length - 1);
     get()._applyStepIndex(next);
   },
-
   stepBackward: () => {
     if (!get().steps.length) return;
     const { stepIndex } = get();
     const prev = Math.max(-1, stepIndex - 1);
     get()._applyStepIndex(prev);
   },
-
   toStart: () => {
     if (!get().steps.length) get().rebuildSteps();
     get()._applyStepIndex(-1);
   },
-
   toEnd: () => {
     if (!get().steps.length) get().rebuildSteps();
     const last = get().steps.length - 1;
     get()._applyStepIndex(last);
   },
-
   seekTo: (absoluteIndex) => {
     if (!get().steps.length) return;
     const idx = Math.max(-1, Math.min(get().steps.length - 1, absoluteIndex));
     get()._applyStepIndex(idx);
   },
-
   play: async () => {
     if (!get().steps.length) get().rebuildSteps();
     if (get().fastSolve) {
@@ -355,7 +543,6 @@ const useVisualizerStore = create((set, get) => ({
       set({ isPlaying: false });
       return;
     }
-
     const myRun = get().runId + 1;
     const { visitDelay } = get()._delays();
     set({ runId: myRun, isPlaying: true });
@@ -373,12 +560,9 @@ const useVisualizerStore = create((set, get) => ({
       if (!get().isPlaying || get().runId !== myRun) return;
       get()._applyStepIndex(idx + 1);
     }
-
     if (get().runId === myRun) set({ isPlaying: false });
   },
-
   pause: () => set({ isPlaying: false }),
-
   runAlgorithm: () => {
     get().rebuildSteps();
     if (get().fastSolve) {
@@ -389,13 +573,32 @@ const useVisualizerStore = create((set, get) => ({
     }
   },
 
-  // ===== Reset / Generator =====
+  // ---------- Grid generators / reset ----------
   reset: () => {
-    const { rows, cols } = get();
-    get().initializeGrid(rows, cols);
+    if (get().mode === "grid") {
+      const { rows, cols } = get();
+      get().initializeGrid(rows, cols);
+    } else {
+      get().graphClear();
+      set({
+        visitedNodes: [],
+        pathNodes: [],
+        logs: [],
+        steps: [],
+        stepIndex: -1,
+        _allLogs: [],
+        currentPseudoLine: 0,
+        isPlaying: false,
+        currentStep: 0,
+        totalSteps: 0,
+        meta: {},
+        pathCost: 0,
+        pathLength: 0,
+      });
+    }
   },
-
   generateRandom: () => {
+    if (get().mode !== "grid") return;
     const { rows, cols } = get();
     const grid = generateRandomMaze(rows, cols);
     set({
@@ -416,8 +619,8 @@ const useVisualizerStore = create((set, get) => ({
       runId: get().runId + 1,
     });
   },
-
   generateRecursive: () => {
+    if (get().mode !== "grid") return;
     const { rows, cols } = get();
     const grid = recursiveDivisionMaze(rows, cols);
     set({
@@ -440,12 +643,10 @@ const useVisualizerStore = create((set, get) => ({
   },
 }));
 
-// Apply saved theme at startup
+// Apply saved theme once
 try {
   const t = useVisualizerStore.getState().theme;
-  const root = document.documentElement;
-  if (t === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
+  applyThemeToDom(t);
 } catch {}
 
 export default useVisualizerStore;

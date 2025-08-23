@@ -4,6 +4,7 @@ import Grid from "./GridVisualizer/Grid";
 import TeachingLogs from "./TeachingLogs";
 import PseudocodeTerminal from "./PseudocodeTerminal";
 import useVisualizerStore from "../store/visualizerStore";
+import GraphCanvas from "./Graph/GraphCanvas";
 
 export default function Layout() {
   const [terminalHeight, setTerminalHeight] = useState(160);
@@ -18,8 +19,9 @@ export default function Layout() {
   const stepBackward = useVisualizerStore((s) => s.stepBackward);
   const reset = useVisualizerStore((s) => s.reset);
   const theme = useVisualizerStore((s) => s.theme);
+  const mode = useVisualizerStore((s) => s.mode);
 
-  // Keyboard shortcuts: space=play/pause, arrows=step, R=reset
+  // Keyboard shortcuts: space/←/→/R
   useEffect(() => {
     const onKey = (e) => {
       const tag = (e.target?.tagName || "").toLowerCase();
@@ -41,7 +43,7 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isPlaying, play, pause, stepForward, stepBackward, reset]);
 
-  // Keep html.dark in sync (also handled in store init)
+  // Apply theme
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") root.classList.add("dark");
@@ -77,9 +79,9 @@ export default function Layout() {
       <ControlsPanel />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Grid area */}
+        {/* Visual area */}
         <div className="flex-1 flex justify-center items-center overflow-auto">
-          <Grid />
+          {mode === "grid" ? <Grid /> : <GraphCanvas />}
         </div>
 
         {/* Vertical resizer */}
@@ -88,8 +90,6 @@ export default function Layout() {
           onMouseDown={() => (dragVRef.current = true)}
           title="Drag to resize pseudocode panel"
         />
-
-        {/* Pseudocode Terminal */}
         <div style={{ width: `${rightWidth}px` }} className="shrink-0">
           <PseudocodeTerminal />
         </div>
@@ -101,8 +101,6 @@ export default function Layout() {
         onMouseDown={() => (dragHRef.current = true)}
         title="Drag to resize logs"
       />
-
-      {/* Logs terminal */}
       <div style={{ height: `${terminalHeight}px` }} className="shrink-0">
         <TeachingLogs />
       </div>
