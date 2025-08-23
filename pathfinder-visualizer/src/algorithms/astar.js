@@ -1,68 +1,77 @@
-function heuristic(a, b) {
-  // Manhattan works well on 4-neighbor grid
-  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+// A* with Manhattan heuristic. Edge cost = weight of target cell.
+const key = (r, c) => `${r},${c}`;
+
+function popMinF(arr) {
+  let best = 0;
+  for (let i = 1; i < arr.length; i++) if (arr[i].f < arr[best].f) best = i;
+  return arr.splice(best, 1)[0];
 }
 
 export function astar(grid) {
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const start = [0, 0];
-  const end = [rows - 1, cols - 1];
+  const rows = grid.length, cols = grid[0].length;
+  const start = [0, 0], end = [rows - 1, cols - 1];
 
-  const visitedOrder = [];
-  const logs = ["A* — Weighted + Heuristic (Manhattan)."];
+  const inBounds = (r, c) => r >= 0 && r < rows && c >= 0 && c < cols;
+  const passable = (r, c) => grid[r][c].type !== "wall";
+  const manhattan = (r, c) => Math.abs(r - end[0]) + Math.abs(c - end[1]);
 
-  const g = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
-  const f = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
-  g[start[0]][start[1]] = 0;
-  f[start[0]][start[1]] = heuristic(start, end);
-
-  const open = [[f[start[0]][start[1]], start]];
+  const g = {};
+  const h = {};
+  const f = {};
   const parent = {};
-  let reached = false;
+  const visitedOrder = [];
+  const logs = [];
 
-  while (open.length > 0) {
-    open.sort((a, b) => a[0] - b[0]);
-    const [_, [r, c]] = open.shift();
+  const open = [];
+  const sk = key(start[0], start[1]);
+  g[sk] = 0;
+  h[sk] = manhattan(start[0], start[1]);
+  f[sk] = g[sk] + h[sk];
+  open.push({ r: start[0], c: start[1], f: f[sk] });
+  logs.push(`A* — start at (${start[0]},${start[1]})`);
 
-    visitedOrder.push([r, c]);
-    logs.push(`Visit (${r},${c}), f=${f[r][c]}, g=${g[r][c]}`);
+  const dirs = [[0,1],[1,0],[0,-1],[-1,0]];
 
-    if (r === end[0] && c === end[1]) {
-      reached = true;
-      break;
-    }
+  while (open.length) {
+    const cur = popMinF(open);
+    const k = key(cur.r, cur.c);
+    if (f[k] !== cur.f) continue; // stale
+    visitedOrder.push([cur.r, cur.c]);
+    logs.push(`Visit (${cur.r},${cur.c})`);
+    if (cur.r === end[0] && cur.c === end[1]) break;
 
-    for (let [dr, dc] of [[0,1],[1,0],[0,-1],[-1,0]]) {
-      const nr = r + dr, nc = c + dc;
-      if (
-        nr >= 0 && nr < rows &&
-        nc >= 0 && nc < cols &&
-        grid[nr][nc].type !== "wall"
-      ) {
-        const tentativeG = g[r][c] + grid[nr][nc].weight;
-        if (tentativeG < g[nr][nc]) {
-          parent[[nr, nc]] = [r, c];
-          g[nr][nc] = tentativeG;
-          f[nr][nc] = tentativeG + heuristic([nr, nc], end);
-          open.push([f[nr][nc], [nr, nc]]);
-          logs.push(`Relax (${nr},${nc}) g=${tentativeG}, f=${f[nr][nc]} (w=${grid[nr][nc].weight})`);
-        }
+    for (const [dr, dc] of dirs) {
+      const nr = cur.r + dr, nc = cur.c + dc;
+      if (!inBounds(nr, nc) || !passable(nr, nc)) continue;
+      const nk = key(nr, nc);
+      const w = grid[nr][nc].weight ?? 1;
+      const tentativeG = (g[k] ?? Infinity) + w;
+
+      if (tentativeG < (g[nk] ?? Infinity)) {
+        parent[nk] = k;
+        g[nk] = tentativeG;
+        h[nk] = manhattan(nr, nc);
+        f[nk] = g[nk] + h[nk];
+        open.push({ r: nr, c: nc, f: f[nk] });
+        logs.push(`Relax (${nr},${nc}) g=${g[nk]} h=${h[nk]} f=${f[nk]}`);
       }
     }
   }
 
-  const shortestPath = [];
-  if (reached) {
-    let cur = end;
-    while (cur && parent[cur]) {
-      shortestPath.unshift(cur);
+  let shortestPath = [];
+  const ek = key(end[0], end[1]);
+  if (g[ek] !== undefined) {
+    let cur = ek;
+    while (cur && cur !== sk) {
+      const [rr, cc] = cur.split(",").map(Number);
+      shortestPath.push([rr, cc]);
       cur = parent[cur];
     }
-    shortestPath.unshift(start);
+    shortestPath.push(start);
+    shortestPath.reverse();
   } else {
-    logs.push("No path found.");
+    logs.push("No path");
   }
 
-  return { visitedOrder, shortestPath, logs };
+  return { visitedOrder, shortestPath, logs, meta: { g, h, f, parent } };
 }

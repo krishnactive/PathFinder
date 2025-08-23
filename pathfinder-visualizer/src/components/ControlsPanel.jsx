@@ -3,7 +3,7 @@ import useVisualizerStore from "../store/visualizerStore";
 
 export default function ControlsPanel() {
   // Grid & algo actions
-  const runAlgorithm = useVisualizerStore((s) => s.runAlgorithm); // Build + Play (respects Fast Solve)
+  const runAlgorithm = useVisualizerStore((s) => s.runAlgorithm);
   const reset = useVisualizerStore((s) => s.reset);
   const setAlgorithm = useVisualizerStore((s) => s.setAlgorithm);
   const generateRandom = useVisualizerStore((s) => s.generateRandom);
@@ -24,6 +24,7 @@ export default function ControlsPanel() {
   const setZoomMode = useVisualizerStore((s) => s.setZoomMode);
   const setZoomFactor = useVisualizerStore((s) => s.setZoomFactor);
   const setFastSolve = useVisualizerStore((s) => s.setFastSolve);
+  const setTheme = useVisualizerStore((s) => s.setTheme);
 
   // State
   const algorithm = useVisualizerStore((s) => s.algorithm);
@@ -37,6 +38,9 @@ export default function ControlsPanel() {
   const currentStep = useVisualizerStore((s) => s.currentStep);
   const totalSteps = useVisualizerStore((s) => s.totalSteps);
   const stepIndex = useVisualizerStore((s) => s.stepIndex);
+  const theme = useVisualizerStore((s) => s.theme);
+  const pathCost = useVisualizerStore((s) => s.pathCost);
+  const pathLength = useVisualizerStore((s) => s.pathLength);
 
   const [r, setR] = useState(rows);
   const [c, setC] = useState(cols);
@@ -44,17 +48,21 @@ export default function ControlsPanel() {
 
   const isWeighted = algorithm === "dijkstra" || algorithm === "astar";
 
-  // Slider uses range 0..totalSteps where value==0 => pre-start (-1), 1 => stepIndex 0, etc.
   const progressSliderValue = Math.max(0, Math.min(totalSteps, stepIndex + 1));
-  const onProgressChange = (val) => {
-    const v = Number(val);
-    // convert 0..total -> -1..(total-1)
-    seekTo(v - 1);
-  };
+  const onProgressChange = (val) => seekTo(Number(val) - 1);
 
   return (
-    <div className="p-3 bg-green-700 text-white flex items-center gap-3 flex-wrap">
+    <div className="p-3 bg-green-700 dark:bg-green-800 text-white flex items-center gap-3 flex-wrap">
       <h1 className="font-bold text-xl pr-2">PathFinder</h1>
+
+      {/* Theme toggle */}
+      <button
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="px-2 py-1 rounded bg-gray-200 text-black dark:bg-gray-700 dark:text-gray-100"
+        title="Toggle theme"
+      >
+        {theme === "dark" ? "🌙 Dark" : "☀ Light"}
+      </button>
 
       {/* Grid size */}
       <label className="text-sm opacity-90">Rows</label>
@@ -135,7 +143,7 @@ export default function ControlsPanel() {
       <label className="flex items-center gap-1 ml-2 text-xs">
         <input
           type="checkbox"
-          checked={fastSolve}
+          checked={useVisualizerStore.getState().fastSolve}
           onChange={(e) => setFastSolve(e.target.checked)}
         />
         Fast Solve
@@ -143,54 +151,18 @@ export default function ControlsPanel() {
 
       {/* Playback controls */}
       <div className="flex items-center gap-2 ml-2">
-        <button
-          onClick={toStart}
-          className="bg-gray-200 text-black px-2 py-1 rounded"
-          title="Go to start"
-        >
-          ⏮
-        </button>
+        <button onClick={toStart} className="bg-gray-200 text-black px-2 py-1 rounded" title="Go to start">⏮</button>
         {isPlaying ? (
-          <button
-            onClick={pause}
-            className="bg-yellow-300 text-black px-2 py-1 rounded"
-            title="Pause"
-          >
-            ⏸
-          </button>
+          <button onClick={pause} className="bg-yellow-300 text-black px-2 py-1 rounded" title="Pause">⏸</button>
         ) : (
-          <button
-            onClick={play}
-            className="bg-yellow-400 text-black px-2 py-1 rounded"
-            title="Play"
-          >
-            ▶
-          </button>
+          <button onClick={play} className="bg-yellow-400 text-black px-2 py-1 rounded" title="Play">▶</button>
         )}
-        <button
-          onClick={stepBackward}
-          className="bg-gray-200 text-black px-2 py-1 rounded"
-          title="Step back"
-        >
-          ‹
-        </button>
-        <button
-          onClick={stepForward}
-          className="bg-gray-200 text-black px-2 py-1 rounded"
-          title="Step forward"
-        >
-          ›
-        </button>
-        <button
-          onClick={toEnd}
-          className="bg-gray-200 text-black px-2 py-1 rounded"
-          title="Go to end"
-        >
-          ⏭
-        </button>
+        <button onClick={stepBackward} className="bg-gray-200 text-black px-2 py-1 rounded" title="Step back">‹</button>
+        <button onClick={stepForward} className="bg-gray-200 text-black px-2 py-1 rounded" title="Step forward">›</button>
+        <button onClick={toEnd} className="bg-gray-200 text-black px-2 py-1 rounded" title="Go to end">⏭</button>
       </div>
 
-      {/* Rebuild & autoplay button */}
+      {/* Start (rebuild) */}
       <button
         onClick={runAlgorithm}
         className="bg-indigo-400 text-black px-3 py-1 rounded"
@@ -199,7 +171,7 @@ export default function ControlsPanel() {
         Start (Rebuild)
       </button>
 
-      {/* PROGRESS BAR */}
+      {/* Progress bar */}
       <div className="flex items-center gap-2 ml-3 min-w-[220px]">
         <input
           type="range"
@@ -212,32 +184,20 @@ export default function ControlsPanel() {
           title="Scrub through steps"
         />
         <span className="text-xs tabular-nums">
-          {currentStep}/{totalSteps}
+          {useVisualizerStore.getState().currentStep}/{totalSteps}
         </span>
       </div>
 
+      {/* Path stats */}
+      <div className="ml-2 px-2 py-1 rounded bg-white/80 text-black dark:bg-gray-800 dark:text-gray-100 text-xs">
+        Cost: <span className="font-semibold">{pathCost}</span> ·
+        Length: <span className="font-semibold">{pathLength}</span>
+      </div>
+
       {/* Generators & reset */}
-      <button
-        onClick={reset}
-        className="bg-red-500 px-3 py-1 rounded"
-        title="Clear path & visited, reset grid"
-      >
-        Reset
-      </button>
-      <button
-        onClick={generateRandom}
-        className="bg-blue-400 text-black px-3 py-1 rounded"
-        title="Random weighted terrain + walls"
-      >
-        Random Maze
-      </button>
-      <button
-        onClick={generateRecursive}
-        className="bg-purple-500 text-white px-3 py-1 rounded"
-        title="Recursive division maze"
-      >
-        Recursive Maze
-      </button>
+      <button onClick={reset} className="bg-red-500 px-3 py-1 rounded" title="Reset grid">Reset</button>
+      <button onClick={generateRandom} className="bg-blue-400 text-black px-3 py-1 rounded" title="Random weighted terrain + walls">Random Maze</button>
+      <button onClick={generateRecursive} className="bg-purple-500 text-white px-3 py-1 rounded" title="Recursive division maze">Recursive Maze</button>
 
       <div className="text-xs opacity-90 ml-auto">
         <span className="mr-2">💡 Left-click: wall</span>

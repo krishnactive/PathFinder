@@ -1,63 +1,67 @@
+// Weighted Dijkstra. Edge cost = weight of target cell (start weight=0).
+const key = (r, c) => `${r},${c}`;
+
+function popMin(arr) {
+  let best = 0;
+  for (let i = 1; i < arr.length; i++) if (arr[i].d < arr[best].d) best = i;
+  return arr.splice(best, 1)[0];
+}
+
 export function dijkstra(grid) {
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const start = [0, 0];
-  const end = [rows - 1, cols - 1];
+  const rows = grid.length, cols = grid[0].length;
+  const start = [0, 0], end = [rows - 1, cols - 1];
 
-  const visitedOrder = [];
-  const logs = ["Dijkstra — Weighted: uses cell costs for shortest path."];
+  const inBounds = (r, c) => r >= 0 && r < rows && c >= 0 && c < cols;
+  const passable = (r, c) => grid[r][c].type !== "wall";
 
-  const dist = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
-  dist[start[0]][start[1]] = 0;
-
-  const pq = [[0, start]];
+  const dist = {};
   const parent = {};
-  let reached = false;
+  const visitedOrder = [];
+  const logs = [];
 
-  while (pq.length > 0) {
-    pq.sort((a, b) => a[0] - b[0]); // naive PQ; OK for teaching
-    const [d, [r, c]] = pq.shift();
+  const pq = [];
+  dist[key(start[0], start[1])] = 0;
+  pq.push({ r: start[0], c: start[1], d: 0 });
+  logs.push(`Dijkstra — start at (${start[0]},${start[1]})`);
 
-    if (d > dist[r][c]) continue;
+  const dirs = [[0,1],[1,0],[0,-1],[-1,0]];
+
+  while (pq.length) {
+    const { r, c, d } = popMin(pq);
+    const k = key(r, c);
+    if (d !== dist[k]) continue; // stale
     visitedOrder.push([r, c]);
-    logs.push(`Visit (${r},${c}), dist = ${d}`);
+    logs.push(`Visit (${r},${c})`);
+    if (r === end[0] && c === end[1]) break;
 
-    if (r === end[0] && c === end[1]) {
-      reached = true;
-      break;
-    }
-
-    for (let [dr, dc] of [[0,1],[1,0],[0,-1],[-1,0]]) {
+    for (const [dr, dc] of dirs) {
       const nr = r + dr, nc = c + dc;
-      if (
-        nr >= 0 && nr < rows &&
-        nc >= 0 && nc < cols &&
-        grid[nr][nc].type !== "wall"
-      ) {
-        const w = grid[nr][nc].weight;
-        const nd = d + w;
-        if (nd < dist[nr][nc]) {
-          dist[nr][nc] = nd;
-          parent[[nr, nc]] = [r, c];
-          pq.push([nd, [nr, nc]]);
-          logs.push(`Relax (${r},${c}) → (${nr},${nc}) with w=${w}, new dist=${nd}`);
-        }
+      if (!inBounds(nr, nc) || !passable(nr, nc)) continue;
+      const nk = key(nr, nc);
+      const w = grid[nr][nc].weight ?? 1;
+      const nd = d + w;
+      if (dist[nk] === undefined || nd < dist[nk]) {
+        dist[nk] = nd;
+        parent[nk] = k;
+        pq.push({ r: nr, c: nc, d: nd });
+        logs.push(`Relax (${nr},${nc}) newDist=${nd}`);
       }
     }
   }
 
-  // Reconstruct path only if end reached
-  const shortestPath = [];
-  if (reached) {
-    let cur = end;
-    while (cur && parent[cur]) {
-      shortestPath.unshift(cur);
+  let shortestPath = [];
+  if (dist[key(end[0], end[1])] !== undefined) {
+    let cur = key(end[0], end[1]);
+    while (cur && cur !== key(start[0], start[1])) {
+      const [rr, cc] = cur.split(",").map(Number);
+      shortestPath.push([rr, cc]);
       cur = parent[cur];
     }
-    shortestPath.unshift(start);
+    shortestPath.push(start);
+    shortestPath.reverse();
   } else {
-    logs.push("No path found.");
+    logs.push("No path");
   }
 
-  return { visitedOrder, shortestPath, logs };
+  return { visitedOrder, shortestPath, logs, meta: { dist, parent } };
 }

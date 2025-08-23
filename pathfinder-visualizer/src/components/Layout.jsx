@@ -1,14 +1,52 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import ControlsPanel from "./ControlsPanel";
 import Grid from "./GridVisualizer/Grid";
 import TeachingLogs from "./TeachingLogs";
 import PseudocodeTerminal from "./PseudocodeTerminal";
+import useVisualizerStore from "../store/visualizerStore";
 
 export default function Layout() {
-  const [terminalHeight, setTerminalHeight] = useState(160); // bottom terminal height
-  const [rightWidth, setRightWidth] = useState(320);         // right pseudo-terminal width
+  const [terminalHeight, setTerminalHeight] = useState(160);
+  const [rightWidth, setRightWidth] = useState(320);
   const dragHRef = useRef(false);
   const dragVRef = useRef(false);
+
+  const play = useVisualizerStore((s) => s.play);
+  const pause = useVisualizerStore((s) => s.pause);
+  const isPlaying = useVisualizerStore((s) => s.isPlaying);
+  const stepForward = useVisualizerStore((s) => s.stepForward);
+  const stepBackward = useVisualizerStore((s) => s.stepBackward);
+  const reset = useVisualizerStore((s) => s.reset);
+  const theme = useVisualizerStore((s) => s.theme);
+
+  // Keyboard shortcuts: space=play/pause, arrows=step, R=reset
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea" || e.target?.isContentEditable;
+      if (isTyping) return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        isPlaying ? pause() : play();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault(); stepForward();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault(); stepBackward();
+      } else if (e.key === "r" || e.key === "R") {
+        e.preventDefault(); reset();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isPlaying, play, pause, stepForward, stepBackward, reset]);
+
+  // Keep html.dark in sync (also handled in store init)
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
+  }, [theme]);
 
   useEffect(() => {
     const onMove = (e) => {
@@ -19,7 +57,6 @@ export default function Layout() {
       }
       if (dragVRef.current) {
         const vw = window.innerWidth;
-        // clamp between 240px and 60% of viewport width
         const newW = Math.max(240, Math.min(vw * 0.6, vw - e.clientX));
         setRightWidth(newW);
       }
@@ -36,32 +73,31 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-gray-100 dark:bg-[#0f1115]">
       <ControlsPanel />
 
-      {/* Middle row: grid + vertical resizable pseudocode terminal */}
-      <div className="flex-1 flex bg-gray-100 overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         {/* Grid area */}
         <div className="flex-1 flex justify-center items-center overflow-auto">
           <Grid />
         </div>
 
-        {/* Vertical drag handle */}
+        {/* Vertical resizer */}
         <div
-          className="w-1 bg-gray-300 hover:bg-gray-400 cursor-col-resize"
+          className="w-1 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 cursor-col-resize"
           onMouseDown={() => (dragVRef.current = true)}
           title="Drag to resize pseudocode panel"
         />
 
-        {/* Pseudocode terminal (right) */}
+        {/* Pseudocode Terminal */}
         <div style={{ width: `${rightWidth}px` }} className="shrink-0">
           <PseudocodeTerminal />
         </div>
       </div>
 
-      {/* Horizontal drag handle for bottom logs */}
+      {/* Horizontal resizer */}
       <div
-        className="h-2 bg-gray-300 hover:bg-gray-400 cursor-row-resize"
+        className="h-2 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 cursor-row-resize"
         onMouseDown={() => (dragHRef.current = true)}
         title="Drag to resize logs"
       />

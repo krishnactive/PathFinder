@@ -3,3 +3,10 @@
 .cursor-row-resize {
   cursor: row-resize;
 }
+.cursor-col-resize { cursor: col-resize; }
+/* .cursor-row-resize { cursor: row-resize; } */
+
+/* Smooth fonts for dark backgrounds */
+html.dark {
+  color-scheme: dark;
+}

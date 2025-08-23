@@ -41,7 +41,41 @@ function lineFromLog(algorithm, text) {
   return 0;
 }
 
+function sumPathCost(grid, path) {
+  if (!path || !path.length) return 0;
+  let sum = 0;
+  for (let i = 1; i < path.length; i++) {
+    const [r, c] = path[i];
+    sum += grid[r][c].weight ?? 1;
+  }
+  return sum;
+}
+
+// THEME helpers
+const THEME_KEY = "pf_theme";
+function readInitialTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    if (t === "dark" || t === "light") return t;
+  } catch {}
+  return "dark"; // default
+}
+function applyThemeToDom(theme) {
+  const root = document.documentElement;
+  if (theme === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
+}
+
 const useVisualizerStore = create((set, get) => ({
+  // Theme
+  theme: readInitialTheme(),
+  setTheme: (theme) => {
+    const t = theme === "light" ? "light" : "dark";
+    set({ theme: t });
+    try { localStorage.setItem(THEME_KEY, t); } catch {}
+    applyThemeToDom(t);
+  },
+
   // Grid & algorithms
   rows: 8,
   cols: 8,
@@ -52,7 +86,7 @@ const useVisualizerStore = create((set, get) => ({
   algorithm: "bfs",
 
   // Teaching & animation config
-  animationSpeed: 50, // 1..100 (higher = faster)
+  animationSpeed: 50, // 1..100
   currentPseudoLine: 0,
 
   // Zoom controls
@@ -64,20 +98,24 @@ const useVisualizerStore = create((set, get) => ({
     set({ zoomFactor: z });
   },
 
-  // Fast solve (skip animation, jump to end)
+  // Fast solve
   fastSolve: false,
   setFastSolve: (v) => set({ fastSolve: !!v }),
 
   // Run / playback control
-  runId: 0,         // increments to cancel any running loop
-  isPlaying: false, // true while auto-playing
-  steps: [],        // array of { visited, path, logCount, line }
-  stepIndex: -1,    // -1 means "pre-start" (nothing applied yet)
-  _allLogs: [],     // keep full logs, we slice per step when applying
+  runId: 0,
+  isPlaying: false,
+  steps: [],
+  stepIndex: -1,
+  _allLogs: [],
+  // progress
+  currentStep: 0,
+  totalSteps: 0,
 
-  // Progress metadata
-  currentStep: 0,   // 0..totalSteps
-  totalSteps: 0,    // steps.length
+  // META for tooltips
+  meta: {},            // {dist,parent} or {g,h,f,parent}
+  pathCost: 0,
+  pathLength: 0,
 
   // ===== Initialization & Settings =====
   initializeGrid: (rows, cols) => {
@@ -88,19 +126,12 @@ const useVisualizerStore = create((set, get) => ({
     grid[rows - 1][cols - 1] = { type: "end", weight: 0 };
 
     set({
-      rows,
-      cols,
-      grid,
-      visitedNodes: [],
-      pathNodes: [],
-      logs: [],
+      rows, cols, grid,
+      visitedNodes: [], pathNodes: [], logs: [],
       currentPseudoLine: 0,
-      isPlaying: false,
-      steps: [],
-      stepIndex: -1,
-      _allLogs: [],
-      currentStep: 0,
-      totalSteps: 0,
+      isPlaying: false, steps: [], stepIndex: -1, _allLogs: [],
+      currentStep: 0, totalSteps: 0,
+      meta: {}, pathCost: 0, pathLength: 0,
     });
   },
 
@@ -119,6 +150,9 @@ const useVisualizerStore = create((set, get) => ({
       _allLogs: [],
       currentStep: 0,
       totalSteps: 0,
+      meta: {},
+      pathCost: 0,
+      pathLength: 0,
     }),
 
   setAnimationSpeed: (val) => {
@@ -128,19 +162,15 @@ const useVisualizerStore = create((set, get) => ({
 
   _delays() {
     const sp = get().animationSpeed;
-    const visitDelay = Math.max(5, 205 - sp * 2); // ~200ms..5ms
+    const visitDelay = Math.max(5, 205 - sp * 2);
     return { visitDelay };
   },
 
   _updateProgress(i) {
     const total = get().steps.length;
-    set({
-      currentStep: Math.max(0, Math.min(total, i + 1)), // -1 => 0
-      totalSteps: total,
-    });
+    set({ currentStep: Math.max(0, Math.min(total, i + 1)), totalSteps: total });
   },
 
-  // ===== Grid editing (cancels playback & clears visuals) =====
   _invalidateRunAndClear() {
     const nextId = get().runId + 1;
     set({
@@ -155,6 +185,9 @@ const useVisualizerStore = create((set, get) => ({
       _allLogs: [],
       currentStep: 0,
       totalSteps: 0,
+      meta: {},
+      pathCost: 0,
+      pathLength: 0,
     });
   },
 
@@ -205,15 +238,14 @@ const useVisualizerStore = create((set, get) => ({
     if (algorithm === "dfs") return dfs(grid);
     if (algorithm === "dijkstra") return dijkstra(grid);
     if (algorithm === "astar") return astar(grid);
-    return { visitedOrder: [], shortestPath: [], logs: [] };
+    return { visitedOrder: [], shortestPath: [], logs: [], meta: {} };
   },
 
   _buildStepsFromResult(result) {
-    const { algorithm } = get();
-    const { visitedOrder, shortestPath, logs } = result;
+    const { algorithm, grid } = get();
+    const { visitedOrder, shortestPath, logs, meta } = result;
     const steps = [];
 
-    // Build steps for visiting phase
     for (let i = 0; i < visitedOrder.length; i++) {
       const latestLog = logs[i] || logs[logs.length - 1] || "";
       steps.push({
@@ -224,7 +256,6 @@ const useVisualizerStore = create((set, get) => ({
       });
     }
 
-    // Build steps for path reveal phase
     for (let j = 0; j < (shortestPath?.length || 0); j++) {
       steps.push({
         visited: visitedOrder.slice(),
@@ -234,7 +265,10 @@ const useVisualizerStore = create((set, get) => ({
       });
     }
 
-    return { steps, logs, visitedOrder, shortestPath };
+    const pathCost = sumPathCost(grid, shortestPath);
+    const pathLength = shortestPath?.length || 0;
+
+    return { steps, logs, shortestPath, meta, pathCost, pathLength };
   },
 
   _applyStepIndex(i) {
@@ -274,9 +308,12 @@ const useVisualizerStore = create((set, get) => ({
       logs: [],
       currentPseudoLine: 0,
       isPlaying: false,
-      runId: get().runId + 1, // cancel any current playing loop
+      runId: get().runId + 1,
       currentStep: 0,
       totalSteps: built.steps.length,
+      meta: built.meta || {},
+      pathCost: built.pathCost || 0,
+      pathLength: built.pathLength || 0,
     });
   },
 
@@ -305,7 +342,6 @@ const useVisualizerStore = create((set, get) => ({
     get()._applyStepIndex(last);
   },
 
-  // Seek to an absolute step index (0..total-1). Use -1 to clear.
   seekTo: (absoluteIndex) => {
     if (!get().steps.length) return;
     const idx = Math.max(-1, Math.min(get().steps.length - 1, absoluteIndex));
@@ -314,7 +350,6 @@ const useVisualizerStore = create((set, get) => ({
 
   play: async () => {
     if (!get().steps.length) get().rebuildSteps();
-    // Fast solve: jump straight to end
     if (get().fastSolve) {
       get().toEnd();
       set({ isPlaying: false });
@@ -325,15 +360,13 @@ const useVisualizerStore = create((set, get) => ({
     const { visitDelay } = get()._delays();
     set({ runId: myRun, isPlaying: true });
 
-    // If at end already, restart from start
     const { stepIndex, steps } = get();
     if (steps.length && stepIndex >= steps.length - 1) {
       get()._applyStepIndex(-1);
     }
 
-    // Play forward until end or canceled/paused
     while (get().isPlaying) {
-      if (get().runId !== myRun) return; // canceled by edits/rebuild
+      if (get().runId !== myRun) return;
       const { stepIndex: idx, steps: st } = get();
       if (idx >= st.length - 1) break;
       await new Promise((res) => setTimeout(res, visitDelay));
@@ -346,7 +379,6 @@ const useVisualizerStore = create((set, get) => ({
 
   pause: () => set({ isPlaying: false }),
 
-  // Legacy "Start" behavior: rebuild + autoplay (respects Fast Solve)
   runAlgorithm: () => {
     get().rebuildSteps();
     if (get().fastSolve) {
@@ -378,6 +410,9 @@ const useVisualizerStore = create((set, get) => ({
       _allLogs: [],
       currentStep: 0,
       totalSteps: 0,
+      meta: {},
+      pathCost: 0,
+      pathLength: 0,
       runId: get().runId + 1,
     });
   },
@@ -397,9 +432,20 @@ const useVisualizerStore = create((set, get) => ({
       _allLogs: [],
       currentStep: 0,
       totalSteps: 0,
+      meta: {},
+      pathCost: 0,
+      pathLength: 0,
       runId: get().runId + 1,
     });
   },
 }));
+
+// Apply saved theme at startup
+try {
+  const t = useVisualizerStore.getState().theme;
+  const root = document.documentElement;
+  if (t === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
+} catch {}
 
 export default useVisualizerStore;
