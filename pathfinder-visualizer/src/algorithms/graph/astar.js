@@ -4,25 +4,23 @@ export function astar(ctx) {
   const pos = Object.fromEntries(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
   const adj = buildAdj(edges);
 
-  const g = {};
-  const h = {};
-  const f = {};
-  const parent = {};
+  const g = {}, h = {}, f = {}, parent = {};
   const open = [];
   const logs = [`A* — start at ${startId}`];
   const visitedOrder = [];
+  const frontierTimeline = [];
 
   g[startId] = 0;
   h[startId] = heur(pos[startId], pos[endId]);
   f[startId] = g[startId] + h[startId];
-  open.push({ id: startId, f: f[startId] });
+  open.push({ id: startId, f: f[startId], g: g[startId], h: h[startId] });
 
   while (open.length) {
     const u = popMinF(open);
     if (f[u.id] !== u.f) continue;
     visitedOrder.push(u.id);
     logs.push(`Visit ${u.id}`);
-    if (u.id === endId) break;
+    if (u.id === endId) { frontierTimeline.push([]); break; }
 
     for (const { to, w } of adj.get(u.id) || []) {
       const tentative = (g[u.id] ?? Infinity) + (w ?? 1);
@@ -31,16 +29,21 @@ export function astar(ctx) {
         g[to] = tentative;
         h[to] = heur(pos[to], pos[endId]);
         f[to] = g[to] + h[to];
-        open.push({ id: to, f: f[to] });
+        open.push({ id: to, f: f[to], g: g[to], h: h[to] });
         logs.push(`Relax ${to} g=${g[to]} h=${h[to]} f=${f[to]}`);
       }
     }
+    // snapshot OPEN sorted by f
+    const snap = [...open]
+      .sort((a, b) => a.f - b.f)
+      .map((p) => ({ id: p.id, label: p.id, f: p.f, g: p.g, h: p.h }));
+    frontierTimeline.push(snap);
   }
 
   const shortestPath = reconstruct(parent, startId, endId);
   if (!shortestPath.length) logs.push("No path");
 
-  return { visitedOrder, shortestPath, logs, meta: { g, h, f, parent } };
+  return { visitedOrder, shortestPath, logs, meta: { g, h, f, parent }, frontierTimeline };
 }
 
 function heur(a, b) {
@@ -71,10 +74,6 @@ function reconstruct(parent, s, t) {
     path.push(cur);
     cur = parent[cur];
   }
-  if (cur === s) {
-    path.push(s);
-    path.reverse();
-    return path;
-  }
+  if (cur === s) { path.push(s); path.reverse(); return path; }
   return [];
 }

@@ -1,4 +1,4 @@
-// Iterative DFS (unweighted). Returns depth as dist (first discovery).
+// Iterative DFS (unweighted). Returns metadata + frontierTimeline (stack top->bottom).
 const key = (r, c) => `${r},${c}`;
 
 export function dfs(grid) {
@@ -11,10 +11,10 @@ export function dfs(grid) {
   const st = [];
   const visitedOrder = [];
   const logs = [];
-
   const seen = new Set();
   const parent = {};
-  const dist = {}; // depth when first discovered
+  const dist = {};
+  const frontierTimeline = [];
 
   st.push(start);
   seen.add(key(start[0], start[1]));
@@ -28,8 +28,7 @@ export function dfs(grid) {
     const [r, c] = st.pop();
     visitedOrder.push([r, c]);
     logs.push(`Visit (${r},${c})`);
-    if (r === end[0] && c === end[1]) { found = true; break; }
-
+    if (r === end[0] && c === end[1]) { found = true; }
     for (const [dr, dc] of dirs) {
       const nr = r + dr, nc = c + dc;
       if (!inBounds(nr, nc) || !passable(nr, nc)) continue;
@@ -41,6 +40,10 @@ export function dfs(grid) {
       st.push([nr, nc]);
       logs.push(`Push (${nr},${nc})`);
     }
+    // snapshot stack (top to bottom)
+    const arr = [...st].reverse(); // top is last pushed
+    frontierTimeline.push(arr.map(([rr, cc]) => ({ id: key(rr, cc), label: `(${rr},${cc})` })));
+    if (found) break;
   }
 
   let shortestPath = [];
@@ -58,5 +61,5 @@ export function dfs(grid) {
     logs.push("No path");
   }
 
-  return { visitedOrder, shortestPath, logs, meta: { dist, parent } };
+  return { visitedOrder, shortestPath, logs, meta: { dist, parent }, frontierTimeline };
 }

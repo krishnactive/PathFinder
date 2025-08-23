@@ -1,4 +1,4 @@
-// Unweighted BFS (ignores weights). Returns metadata for teaching.
+// Unweighted BFS (ignores weights). Returns metadata + frontierTimeline.
 const key = (r, c) => `${r},${c}`;
 
 export function bfs(grid) {
@@ -11,9 +11,9 @@ export function bfs(grid) {
   const q = [];
   const visitedOrder = [];
   const logs = [];
-
-  const dist = {};         // steps from start
-  const parent = {};       // parent map "r,c" -> "pr,pc"
+  const dist = {};
+  const parent = {};
+  const frontierTimeline = [];
 
   dist[key(start[0], start[1])] = 0;
   q.push(start);
@@ -27,8 +27,7 @@ export function bfs(grid) {
     visitedOrder.push([r, c]);
     logs.push(`Visit (${r},${c})`);
 
-    if (r === end[0] && c === end[1]) { found = true; break; }
-
+    if (r === end[0] && c === end[1]) { found = true; }
     for (const [dr, dc] of dirs) {
       const nr = r + dr, nc = c + dc;
       if (!inBounds(nr, nc) || !passable(nr, nc)) continue;
@@ -39,6 +38,9 @@ export function bfs(grid) {
       q.push([nr, nc]);
       logs.push(`Enqueue (${nr},${nc})`);
     }
+    // snapshot queue (front to back)
+    frontierTimeline.push(q.map(([rr, cc]) => ({ id: key(rr, cc), label: `(${rr},${cc})` })));
+    if (found) break;
   }
 
   let shortestPath = [];
@@ -56,5 +58,5 @@ export function bfs(grid) {
     logs.push("No path");
   }
 
-  return { visitedOrder, shortestPath, logs, meta: { dist, parent } };
+  return { visitedOrder, shortestPath, logs, meta: { dist, parent }, frontierTimeline };
 }

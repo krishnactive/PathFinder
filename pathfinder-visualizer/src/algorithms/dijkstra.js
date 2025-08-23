@@ -18,8 +18,9 @@ export function dijkstra(grid) {
   const parent = {};
   const visitedOrder = [];
   const logs = [];
-
   const pq = [];
+  const frontierTimeline = [];
+
   dist[key(start[0], start[1])] = 0;
   pq.push({ r: start[0], c: start[1], d: 0 });
   logs.push(`Dijkstra — start at (${start[0]},${start[1]})`);
@@ -32,7 +33,10 @@ export function dijkstra(grid) {
     if (d !== dist[k]) continue; // stale
     visitedOrder.push([r, c]);
     logs.push(`Visit (${r},${c})`);
-    if (r === end[0] && c === end[1]) break;
+    if (r === end[0] && c === end[1]) { 
+      frontierTimeline.push([]); 
+      break; 
+    }
 
     for (const [dr, dc] of dirs) {
       const nr = r + dr, nc = c + dc;
@@ -47,6 +51,13 @@ export function dijkstra(grid) {
         logs.push(`Relax (${nr},${nc}) newDist=${nd}`);
       }
     }
+    // snapshot PQ sorted by d asc
+    const snap = [...pq].sort((a, b) => a.d - b.d).map((p) => ({
+      id: key(p.r, p.c),
+      label: `(${p.r},${p.c})`,
+      key: p.d,
+    }));
+    frontierTimeline.push(snap);
   }
 
   let shortestPath = [];
@@ -63,5 +74,5 @@ export function dijkstra(grid) {
     logs.push("No path");
   }
 
-  return { visitedOrder, shortestPath, logs, meta: { dist, parent } };
+  return { visitedOrder, shortestPath, logs, meta: { dist, parent }, frontierTimeline };
 }

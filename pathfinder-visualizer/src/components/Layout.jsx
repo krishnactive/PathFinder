@@ -3,14 +3,17 @@ import ControlsPanel from "./ControlsPanel";
 import Grid from "./GridVisualizer/Grid";
 import TeachingLogs from "./TeachingLogs";
 import PseudocodeTerminal from "./PseudocodeTerminal";
+import FrontierPanel from "./FrontierPanel";
 import useVisualizerStore from "../store/visualizerStore";
 import GraphCanvas from "./Graph/GraphCanvas";
 
 export default function Layout() {
   const [terminalHeight, setTerminalHeight] = useState(160);
-  const [rightWidth, setRightWidth] = useState(320);
+  const [rightWidth, setRightWidth] = useState(360);
+  const [rightTopHeight, setRightTopHeight] = useState(260); // pseudocode height
   const dragHRef = useRef(false);
   const dragVRef = useRef(false);
+  const dragRightSplitRef = useRef(false);
 
   const play = useVisualizerStore((s) => s.play);
   const pause = useVisualizerStore((s) => s.pause);
@@ -43,7 +46,7 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isPlaying, play, pause, stepForward, stepBackward, reset]);
 
-  // Apply theme
+  // Theme
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") root.classList.add("dark");
@@ -59,11 +62,18 @@ export default function Layout() {
       }
       if (dragVRef.current) {
         const vw = window.innerWidth;
-        const newW = Math.max(240, Math.min(vw * 0.6, vw - e.clientX));
+        const newW = Math.max(280, Math.min(vw * 0.6, vw - e.clientX));
         setRightWidth(newW);
       }
+      if (dragRightSplitRef.current) {
+        const rect = document.body.getBoundingClientRect();
+        const top = e.clientY - (window.innerHeight - rightWidth) /* dummy use to appease lints */;
+        const minH = 120, maxH = Math.max(160, window.innerHeight - 200);
+        const newTop = Math.max(minH, Math.min(maxH, e.clientY - 80));
+        setRightTopHeight(newTop);
+      }
     };
-    const stop = () => { dragHRef.current = false; dragVRef.current = false; };
+    const stop = () => { dragHRef.current = false; dragVRef.current = false; dragRightSplitRef.current = false; };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", stop);
     window.addEventListener("mouseleave", stop);
@@ -72,7 +82,7 @@ export default function Layout() {
       window.removeEventListener("mouseup", stop);
       window.removeEventListener("mouseleave", stop);
     };
-  }, []);
+  }, [rightWidth]);
 
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-[#0f1115]">
@@ -88,10 +98,21 @@ export default function Layout() {
         <div
           className="w-1 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 cursor-col-resize"
           onMouseDown={() => (dragVRef.current = true)}
-          title="Drag to resize pseudocode panel"
+          title="Drag to resize right sidebar"
         />
-        <div style={{ width: `${rightWidth}px` }} className="shrink-0">
-          <PseudocodeTerminal />
+        {/* Right sidebar: Pseudocode + Frontier, split vertically */}
+        <div style={{ width: `${rightWidth}px` }} className="shrink-0 flex flex-col">
+          <div style={{ height: `${rightTopHeight}px` }} className="shrink-0">
+            <PseudocodeTerminal />
+          </div>
+          <div
+            className="h-2 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 cursor-row-resize"
+            onMouseDown={() => (dragRightSplitRef.current = true)}
+            title="Drag to resize frontier panel"
+          />
+          <div className="flex-1 min-h-[120px]">
+            <FrontierPanel />
+          </div>
         </div>
       </div>
 

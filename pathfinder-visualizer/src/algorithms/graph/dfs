@@ -1,4 +1,4 @@
-// Graph DFS (unweighted). ctx: {nodes, edges, startId, endId}
+// Graph DFS (unweighted). ctx: {edges, startId, endId}
 export function dfs(ctx) {
   const { edges, startId, endId } = ctx;
   const adj = buildAdj(edges);
@@ -8,12 +8,14 @@ export function dfs(ctx) {
   const parent = {};
   const logs = [`DFS — start at ${startId}`];
   const visitedOrder = [];
+  const frontierTimeline = [];
 
   while (st.length) {
     const u = st.pop();
     visitedOrder.push(u);
     logs.push(`Visit ${u}`);
-    if (u === endId) break;
+    if (u === endId) { frontierTimeline.push([]); break; }
+
     for (const { to } of adj.get(u) || []) {
       if (!visited.has(to)) {
         visited.add(to);
@@ -22,13 +24,16 @@ export function dfs(ctx) {
         logs.push(`Push ${to}`);
       }
     }
+    // snapshot stack (top -> bottom)
+    const arr = [...st].reverse();
+    frontierTimeline.push(arr.map((id) => ({ id, label: id })));
   }
 
   const shortestPath = reconstruct(parent, startId, endId);
   if (shortestPath.length) logs.push(`Reached the end; path length = ${shortestPath.length}`);
   else logs.push("No path");
 
-  return { visitedOrder, shortestPath, logs, meta: { dist: buildDepth(parent, startId), parent } };
+  return { visitedOrder, shortestPath, logs, meta: { dist: buildDepth(parent, startId), parent }, frontierTimeline };
 }
 
 function buildAdj(edges) {
@@ -49,11 +54,7 @@ function reconstruct(parent, s, t) {
     path.push(cur);
     cur = parent[cur];
   }
-  if (cur === s) {
-    path.push(s);
-    path.reverse();
-    return path;
-  }
+  if (cur === s) { path.push(s); path.reverse(); return path; }
   return [];
 }
 function buildDepth(parent, s) {

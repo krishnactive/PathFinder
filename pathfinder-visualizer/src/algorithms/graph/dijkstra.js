@@ -1,4 +1,4 @@
-// Graph Dijkstra (weighted edges). ctx: {nodes, edges, startId, endId}
+// Graph Dijkstra (weighted edges). ctx: {edges, startId, endId}
 export function dijkstra(ctx) {
   const { edges, startId, endId } = ctx;
   const adj = buildAdj(edges);
@@ -8,6 +8,7 @@ export function dijkstra(ctx) {
   const pq = [];
   const logs = [`Dijkstra — start at ${startId}`];
   const visitedOrder = [];
+  const frontierTimeline = [];
 
   dist[startId] = 0;
   pq.push({ id: startId, d: 0 });
@@ -17,7 +18,7 @@ export function dijkstra(ctx) {
     if (u.d !== dist[u.id]) continue;
     visitedOrder.push(u.id);
     logs.push(`Visit ${u.id}`);
-    if (u.id === endId) break;
+    if (u.id === endId) { frontierTimeline.push([]); break; }
 
     for (const { to, w } of adj.get(u.id) || []) {
       const nd = u.d + (w ?? 1);
@@ -28,12 +29,15 @@ export function dijkstra(ctx) {
         logs.push(`Relax ${to} newDist=${nd}`);
       }
     }
+    // snapshot PQ sorted by dist
+    const snap = [...pq].sort((a, b) => a.d - b.d).map((p) => ({ id: p.id, label: p.id, key: p.d }));
+    frontierTimeline.push(snap);
   }
 
   const shortestPath = reconstruct(parent, startId, endId);
   if (!shortestPath.length) logs.push("No path");
 
-  return { visitedOrder, shortestPath, logs, meta: { dist, parent } };
+  return { visitedOrder, shortestPath, logs, meta: { dist, parent }, frontierTimeline };
 }
 
 function buildAdj(edges) {
@@ -59,10 +63,6 @@ function reconstruct(parent, s, t) {
     path.push(cur);
     cur = parent[cur];
   }
-  if (cur === s) {
-    path.push(s);
-    path.reverse();
-    return path;
-  }
+  if (cur === s) { path.push(s); path.reverse(); return path; }
   return [];
 }

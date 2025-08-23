@@ -6,8 +6,8 @@ import { astar as gridAstar } from "../algorithms/astar";
 
 import { bfs as graphBfs } from "../algorithms/graph/bfs";
 import { dfs as graphDfs } from "../algorithms/graph/dfs";
-import { dijkstra as graphDijkstra } from "../algorithms/graph/dijkstra.js";
-import { astar as graphAstar } from "../algorithms/graph/astar.js";
+import { dijkstra as graphDijkstra } from "../algorithms/graph/dijkstra";
+import { astar as graphAstar } from "../algorithms/graph/astar";
 
 import { generateRandomMaze, recursiveDivisionMaze } from "../utils/mazeGenerators";
 
@@ -63,8 +63,7 @@ function sumGraphPathCost(graph, path) {
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i];
     const e = graph.edges.find(
-      (ed) =>
-        (ed.from === a && ed.to === b) || (ed.from === b && ed.to === a)
+      (ed) => (ed.from === a && ed.to === b) || (ed.from === b && ed.to === a)
     );
     sum += e ? (e.weight ?? 1) : 0;
   }
@@ -100,6 +99,7 @@ const useVisualizerStore = create((set, get) => ({
       pathNodes: [],
       logs: [],
       currentPseudoLine: 0,
+      frontierSnapshot: [],
       isPlaying: false,
       runId: get().runId + 1,
     }),
@@ -109,9 +109,7 @@ const useVisualizerStore = create((set, get) => ({
   setTheme: (theme) => {
     const t = theme === "light" ? "light" : "dark";
     set({ theme: t });
-    try {
-      localStorage.setItem(THEME_KEY, t);
-    } catch {}
+    try { localStorage.setItem(THEME_KEY, t); } catch {}
     applyThemeToDom(t);
   },
 
@@ -122,12 +120,8 @@ const useVisualizerStore = create((set, get) => ({
 
   // Graph state
   graph: {
-    nodes: [
-      // { id: "A", x: 100, y: 140 }
-    ],
-    edges: [
-      // { id: "A-B", from: "A", to: "B", weight: 1 }
-    ],
+    nodes: [],
+    edges: [],
     startId: null,
     endId: null,
     snap: true,
@@ -139,12 +133,15 @@ const useVisualizerStore = create((set, get) => ({
   selectedEdgeId: null,
 
   // Teaching/animation shared
-  visitedNodes: [], // grid: [r,c] ; graph: node ids
-  pathNodes: [],    // grid: [r,c] ; graph: node ids
+  visitedNodes: [],
+  pathNodes: [],
   logs: [],
   algorithm: "bfs",
   animationSpeed: 50,
   currentPseudoLine: 0,
+
+  // Frontier snapshot for the current step
+  frontierSnapshot: [],
 
   // Zoom (grid)
   zoomMode: "fit",
@@ -180,22 +177,13 @@ const useVisualizerStore = create((set, get) => ({
     grid[rows - 1][cols - 1] = { type: "end", weight: 0 };
 
     set({
-      rows,
-      cols,
-      grid,
-      visitedNodes: [],
-      pathNodes: [],
-      logs: [],
+      rows, cols, grid,
+      visitedNodes: [], pathNodes: [], logs: [],
       currentPseudoLine: 0,
-      isPlaying: false,
-      steps: [],
-      stepIndex: -1,
-      _allLogs: [],
-      currentStep: 0,
-      totalSteps: 0,
-      meta: {},
-      pathCost: 0,
-      pathLength: 0,
+      frontierSnapshot: [],
+      isPlaying: false, steps: [], stepIndex: -1, _allLogs: [],
+      currentStep: 0, totalSteps: 0,
+      meta: {}, pathCost: 0, pathLength: 0,
     });
   },
   setSize: (rows, cols) => {
@@ -207,13 +195,8 @@ const useVisualizerStore = create((set, get) => ({
   // ---------- Graph helpers ----------
   _graphNewNodeId() {
     const used = new Set(get().graph.nodes.map((n) => n.id));
-    // Try alphabet then numbers
-    for (const ch of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-      if (!used.has(ch)) return ch;
-    }
-    let i = 1;
-    while (used.has(String(i))) i++;
-    return String(i);
+    for (const ch of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") if (!used.has(ch)) return ch;
+    let i = 1; while (used.has(String(i))) i++; return String(i);
   },
   graphAddNode(x, y) {
     const { graph } = get();
@@ -236,9 +219,7 @@ const useVisualizerStore = create((set, get) => ({
     if (!fromId || !toId || fromId === toId) return;
     const { graph } = get();
     const exists = graph.edges.some(
-      (e) =>
-        (e.from === fromId && e.to === toId) ||
-        (e.from === toId && e.to === fromId)
+      (e) => (e.from === fromId && e.to === toId) || (e.from === toId && e.to === fromId)
     );
     if (exists) return;
     const id = `${fromId}-${toId}`;
@@ -254,9 +235,7 @@ const useVisualizerStore = create((set, get) => ({
     const { selectedNodeId, selectedEdgeId, graph } = get();
     if (selectedNodeId) {
       const nodes = graph.nodes.filter((n) => n.id !== selectedNodeId);
-      const edges = graph.edges.filter(
-        (e) => e.from !== selectedNodeId && e.to !== selectedNodeId
-      );
+      const edges = graph.edges.filter((e) => e.from !== selectedNodeId && e.to !== selectedNodeId);
       const startId = graph.startId === selectedNodeId ? null : graph.startId;
       const endId = graph.endId === selectedNodeId ? null : graph.endId;
       set({
@@ -268,18 +247,10 @@ const useVisualizerStore = create((set, get) => ({
       set({ graph: { ...graph, edges }, selectedEdgeId: null });
     }
   },
-  graphSelectNode(id) {
-    set({ selectedNodeId: id, selectedEdgeId: null });
-  },
-  graphSelectEdge(id) {
-    set({ selectedEdgeId: id, selectedNodeId: null });
-  },
-  graphSetStart(id) {
-    set((s) => ({ graph: { ...s.graph, startId: id || null } }));
-  },
-  graphSetEnd(id) {
-    set((s) => ({ graph: { ...s.graph, endId: id || null } }));
-  },
+  graphSelectNode(id) { set({ selectedNodeId: id, selectedEdgeId: null }); },
+  graphSelectEdge(id) { set({ selectedEdgeId: id, selectedNodeId: null }); },
+  graphSetStart(id) { set((s) => ({ graph: { ...s.graph, startId: id || null } })); },
+  graphSetEnd(id) { set((s) => ({ graph: { ...s.graph, endId: id || null } })); },
   graphClear() {
     set({
       graph: { nodes: [], edges: [], startId: null, endId: null, snap: true },
@@ -287,15 +258,11 @@ const useVisualizerStore = create((set, get) => ({
       selectedEdgeId: null,
     });
   },
-  graphExport() {
-    const { graph } = get();
-    return JSON.stringify(graph, null, 2);
-  },
+  graphExport() { return JSON.stringify(get().graph, null, 2); },
   graphImport(obj) {
     try {
       const graph = typeof obj === "string" ? JSON.parse(obj) : obj;
-      if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges))
-        return;
+      if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return;
       set({
         graph: {
           nodes: graph.nodes.map((n) => ({ id: String(n.id), x: Number(n.x), y: Number(n.y) })),
@@ -315,7 +282,7 @@ const useVisualizerStore = create((set, get) => ({
     } catch {}
   },
 
-  // ---------- Grid editing (clear playback) ----------
+  // ---------- Clear playback on edits ----------
   _invalidateRunAndClear() {
     const nextId = get().runId + 1;
     set({
@@ -325,6 +292,7 @@ const useVisualizerStore = create((set, get) => ({
       pathNodes: [],
       logs: [],
       currentPseudoLine: 0,
+      frontierSnapshot: [],
       steps: [],
       stepIndex: -1,
       _allLogs: [],
@@ -343,9 +311,7 @@ const useVisualizerStore = create((set, get) => ({
     if (cell.type === "start" || cell.type === "end") return;
 
     newGrid[row][col] =
-      cell.type === "wall"
-        ? { type: "path", weight: 1 }
-        : { type: "wall", weight: Infinity };
+      cell.type === "wall" ? { type: "path", weight: 1 } : { type: "wall", weight: Infinity };
 
     set({ grid: newGrid });
     get()._invalidateRunAndClear();
@@ -391,6 +357,7 @@ const useVisualizerStore = create((set, get) => ({
       meta: {},
       pathCost: 0,
       pathLength: 0,
+      frontierSnapshot: [],
     }),
   setAnimationSpeed: (val) => {
     const v = Math.max(1, Math.min(100, Number(val) || 50));
@@ -414,7 +381,7 @@ const useVisualizerStore = create((set, get) => ({
       if (algorithm === "dfs") return gridDfs(grid);
       if (algorithm === "dijkstra") return gridDijkstra(grid);
       if (algorithm === "astar") return gridAstar(grid);
-      return { visitedOrder: [], shortestPath: [], logs: [], meta: {} };
+      return { visitedOrder: [], shortestPath: [], logs: [], meta: {}, frontierTimeline: [] };
     } else {
       const startId = graph.startId || (graph.nodes[0]?.id ?? null);
       const endId = graph.endId || (graph.nodes[graph.nodes.length - 1]?.id ?? null);
@@ -425,42 +392,44 @@ const useVisualizerStore = create((set, get) => ({
           shortestPath: [],
           logs: ["[Graph] Please set Start and End nodes."],
           meta: {},
+          frontierTimeline: [],
         };
       }
       if (algorithm === "bfs") return graphBfs(ctx);
       if (algorithm === "dfs") return graphDfs(ctx);
       if (algorithm === "dijkstra") return graphDijkstra(ctx);
       if (algorithm === "astar") return graphAstar(ctx);
-      return { visitedOrder: [], shortestPath: [], logs: [], meta: {} };
+      return { visitedOrder: [], shortestPath: [], logs: [], meta: {}, frontierTimeline: [] };
     }
   },
   _buildStepsFromResult(result) {
     const { algorithm, grid, mode, graph } = get();
-    const { visitedOrder, shortestPath, logs, meta } = result;
+    const { visitedOrder, shortestPath, logs, meta, frontierTimeline = [] } = result;
     const steps = [];
 
+    // For each visit step, attach the corresponding frontier snapshot if available
     for (let i = 0; i < visitedOrder.length; i++) {
       const latestLog = logs[i] || logs[logs.length - 1] || "";
       steps.push({
         visited: visitedOrder.slice(0, i + 1),
         path: [],
+        frontier: frontierTimeline[i] || [],
         logCount: Math.min(logs.length, i + 1),
         line: lineFromLog(algorithm, latestLog),
       });
     }
+    // Path reveal steps keep frontier empty
     for (let j = 0; j < (shortestPath?.length || 0); j++) {
       steps.push({
         visited: visitedOrder.slice(),
         path: shortestPath.slice(0, j + 1),
+        frontier: [],
         logCount: logs.length,
         line: lineFromLog(algorithm, logs[logs.length - 1] || ""),
       });
     }
 
-    let pathCost = 0;
-    if (mode === "grid") pathCost = sumGridPathCost(grid, shortestPath);
-    else pathCost = sumGraphPathCost(graph, shortestPath);
-
+    const pathCost = mode === "grid" ? sumGridPathCost(grid, shortestPath) : sumGraphPathCost(graph, shortestPath);
     const pathLength = shortestPath?.length || 0;
 
     return { steps, logs, shortestPath, meta, pathCost, pathLength };
@@ -474,6 +443,7 @@ const useVisualizerStore = create((set, get) => ({
         pathNodes: [],
         logs: [],
         currentPseudoLine: 0,
+        frontierSnapshot: [],
       });
       get()._updateProgress(-1);
       return;
@@ -485,6 +455,7 @@ const useVisualizerStore = create((set, get) => ({
       pathNodes: s.path,
       logs: _allLogs.slice(0, s.logCount),
       currentPseudoLine: s.line,
+      frontierSnapshot: s.frontier || [],
     });
     get()._updateProgress(i);
   },
@@ -501,6 +472,7 @@ const useVisualizerStore = create((set, get) => ({
       pathNodes: [],
       logs: [],
       currentPseudoLine: 0,
+      frontierSnapshot: [],
       isPlaying: false,
       runId: get().runId + 1,
       currentStep: 0,
@@ -588,6 +560,7 @@ const useVisualizerStore = create((set, get) => ({
         stepIndex: -1,
         _allLogs: [],
         currentPseudoLine: 0,
+        frontierSnapshot: [],
         isPlaying: false,
         currentStep: 0,
         totalSteps: 0,
@@ -607,6 +580,7 @@ const useVisualizerStore = create((set, get) => ({
       pathNodes: [],
       logs: [],
       currentPseudoLine: 0,
+      frontierSnapshot: [],
       isPlaying: false,
       steps: [],
       stepIndex: -1,
@@ -629,6 +603,7 @@ const useVisualizerStore = create((set, get) => ({
       pathNodes: [],
       logs: [],
       currentPseudoLine: 0,
+      frontierSnapshot: [],
       isPlaying: false,
       steps: [],
       stepIndex: -1,

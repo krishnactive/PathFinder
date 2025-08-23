@@ -1,6 +1,6 @@
 // Graph BFS (unweighted). ctx: {nodes, edges, startId, endId}
 export function bfs(ctx) {
-  const { nodes, edges, startId, endId } = ctx;
+  const { edges, startId, endId } = ctx;
   const adj = buildAdj(edges);
 
   const q = [startId];
@@ -8,12 +8,16 @@ export function bfs(ctx) {
   const parent = {};
   const logs = [`BFS — start at ${startId}`];
   const visitedOrder = [];
+  const frontierTimeline = [];
 
   while (q.length) {
     const u = q.shift();
     visitedOrder.push(u);
     logs.push(`Visit ${u}`);
-    if (u === endId) break;
+    if (u === endId) {
+      frontierTimeline.push([]);
+      break;
+    }
 
     for (const { to } of adj.get(u) || []) {
       if (!visited.has(to)) {
@@ -23,13 +27,15 @@ export function bfs(ctx) {
         logs.push(`Enqueue ${to}`);
       }
     }
+    // snapshot queue (front -> back)
+    frontierTimeline.push(q.map((id) => ({ id, label: id })));
   }
 
   const shortestPath = reconstruct(parent, startId, endId);
   if (shortestPath.length) logs.push(`Reached the end; path length = ${shortestPath.length}`);
   else logs.push("No path");
 
-  return { visitedOrder, shortestPath, logs, meta: { dist: buildDist(parent, startId, nodes), parent } };
+  return { visitedOrder, shortestPath, logs, meta: { dist: buildDist(parent, startId), parent }, frontierTimeline };
 }
 
 function buildAdj(edges) {
@@ -38,7 +44,7 @@ function buildAdj(edges) {
     if (!m.has(e.from)) m.set(e.from, []);
     if (!m.has(e.to)) m.set(e.to, []);
     m.get(e.from).push({ to: e.to, w: e.weight ?? 1 });
-    m.get(e.to).push({ to: e.from, w: e.weight ?? 1 }); // undirected
+    m.get(e.to).push({ to: e.from, w: e.weight ?? 1 });
   }
   return m;
 }
@@ -50,23 +56,18 @@ function reconstruct(parent, s, t) {
     path.push(cur);
     cur = parent[cur];
   }
-  if (cur === s) {
-    path.push(s);
-    path.reverse();
-    return path;
-  }
+  if (cur === s) { path.push(s); path.reverse(); return path; }
   return [];
 }
-function buildDist(parent, s, nodes) {
-  const d = {};
-  d[s] = 0;
-  const queue = [s];
-  while (queue.length) {
-    const u = queue.shift();
+function buildDist(parent, s) {
+  const d = { [s]: 0 };
+  const q = [s];
+  while (q.length) {
+    const u = q.shift();
     for (const [v, p] of Object.entries(parent)) {
       if (p === u && d[v] === undefined) {
         d[v] = d[u] + 1;
-        queue.push(v);
+        q.push(v);
       }
     }
   }

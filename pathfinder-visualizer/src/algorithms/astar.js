@@ -15,19 +15,17 @@ export function astar(grid) {
   const passable = (r, c) => grid[r][c].type !== "wall";
   const manhattan = (r, c) => Math.abs(r - end[0]) + Math.abs(c - end[1]);
 
-  const g = {};
-  const h = {};
-  const f = {};
-  const parent = {};
+  const g = {}, h = {}, f = {}, parent = {};
   const visitedOrder = [];
   const logs = [];
-
   const open = [];
+  const frontierTimeline = [];
+
   const sk = key(start[0], start[1]);
   g[sk] = 0;
   h[sk] = manhattan(start[0], start[1]);
   f[sk] = g[sk] + h[sk];
-  open.push({ r: start[0], c: start[1], f: f[sk] });
+  open.push({ r: start[0], c: start[1], f: f[sk], g: g[sk], h: h[sk] });
   logs.push(`A* — start at (${start[0]},${start[1]})`);
 
   const dirs = [[0,1],[1,0],[0,-1],[-1,0]];
@@ -38,7 +36,10 @@ export function astar(grid) {
     if (f[k] !== cur.f) continue; // stale
     visitedOrder.push([cur.r, cur.c]);
     logs.push(`Visit (${cur.r},${cur.c})`);
-    if (cur.r === end[0] && cur.c === end[1]) break;
+    if (cur.r === end[0] && cur.c === end[1]) { 
+      frontierTimeline.push([]); 
+      break; 
+    }
 
     for (const [dr, dc] of dirs) {
       const nr = cur.r + dr, nc = cur.c + dc;
@@ -52,10 +53,15 @@ export function astar(grid) {
         g[nk] = tentativeG;
         h[nk] = manhattan(nr, nc);
         f[nk] = g[nk] + h[nk];
-        open.push({ r: nr, c: nc, f: f[nk] });
+        open.push({ r: nr, c: nc, f: f[nk], g: g[nk], h: h[nk] });
         logs.push(`Relax (${nr},${nc}) g=${g[nk]} h=${h[nk]} f=${f[nk]}`);
       }
     }
+    // snapshot OPEN sorted by f asc
+    const snap = [...open]
+      .sort((a, b) => a.f - b.f)
+      .map((p) => ({ id: key(p.r, p.c), label: `(${p.r},${p.c})`, f: p.f, g: p.g, h: p.h }));
+    frontierTimeline.push(snap);
   }
 
   let shortestPath = [];
@@ -73,5 +79,5 @@ export function astar(grid) {
     logs.push("No path");
   }
 
-  return { visitedOrder, shortestPath, logs, meta: { g, h, f, parent } };
+  return { visitedOrder, shortestPath, logs, meta: { g, h, f, parent }, frontierTimeline };
 }
