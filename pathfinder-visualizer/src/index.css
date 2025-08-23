@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+.cursor-row-resize {
+  cursor: row-resize;
+}
