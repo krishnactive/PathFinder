@@ -129,9 +129,34 @@ export default function ControlsPanel() {
             Delete
           </button>
 
-          <span className="text-xs opacity-90">
-            Double-click background: add node • Drag node: move • Click two nodes: connect • Click weight to edit
-          </span>
+          <div className="relative group inline-block">
+  {/* Info Icon */}
+  <button className="p-1 rounded-full hover:bg-gray-200">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  </button>
+
+  {/* Tooltip */}
+  <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-64 p-3 rounded-xl bg-gray-800 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+    • Double-click background: add node <br />
+    • Drag node: move <br />
+    • Click weight to edit <br />
+    • Click one node then <b>E/e</b> (keyboard) then other nodes: connect
+  </div>
+</div>
+
         </>
       )}
 
