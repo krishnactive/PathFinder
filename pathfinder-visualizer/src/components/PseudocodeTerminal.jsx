@@ -10,6 +10,9 @@ const CPP = {
     "  for (Node v : neighbors(u)) {",
     "    if (traversable(v) && !visited[v]) {",
     "      visited[v] = true; parent[v] = u; q.push(v);",
+    "    }",
+    "  }",
+    "}",
   ],
   dfs: [
     "stack<Node> st; visited[start] = true; st.push(start);",
@@ -19,24 +22,44 @@ const CPP = {
     "  for (Node v : neighbors(u)) {",
     "    if (traversable(v) && !visited[v]) {",
     "      visited[v] = true; parent[v] = u; st.push(v);",
+    "    }",
+    "  }",
+    "}",
   ],
   dijkstra: [
-    "dist[][] = INF; dist[start] = 0; priority_queue<...> pq; pq.push({0, start});",
+    "dist[v] = INF for all v; dist[start] = 0;",
+    "priority_queue<pair<int,Node>> pq; pq.push({0, start});",
     "while (!pq.empty()) {",
-    "  auto [d, u] = pq.top(); pq.pop(); if (d > dist[u]) continue;  // visit u",
-    "  if (u == end) break;",
+    "  auto [d, u] = pq.top(); pq.pop();",
+    "  if (d > dist[u]) continue;  // stale entry",
+    "  if (u == end) break;        // reached target",
     "  for (Node v : neighbors(u)) {",
-    "    if (traversable(v)) {",
-    "      if (d + w(u,v) < dist[v]) { dist[v]=d+w(u,v); parent[v]=u; pq.push({dist[v],v}); }",
+    "    if (traversable(v) && d + w(u,v) < dist[v]) {",
+    "      dist[v] = d + w(u,v);",
+    "      parent[v] = u;",
+    "      pq.push({dist[v], v});",
+    "    }",
+    "  }",
+    "}",
   ],
   astar: [
-    "g[u]=INF; f[u]=INF; g[start]=0; f[start]=h(start,end); priority_queue<...> open; open.push({f[start], start});",
+    "for each node v: g[v]=INF, f[v]=INF;",
+    "g[start]=0; f[start]=h(start,end);",
+    "priority_queue<pair<double,Node>> open; open.push({f[start], start});",
     "while (!open.empty()) {",
     "  Node u = extract_min_f(open);  // visit u",
-    "  if (u == end) break;",
+    "  if (u == end) break;           // found path",
     "  for (Node v : neighbors(u)) {",
-    "    double tentative = g[u] + w(u, v);",
-    "    if (tentative < g[v]) { parent[v]=u; g[v]=tentative; f[v]=g[v]+h(v,end); push(open,{f[v],v}); }",
+    "    if (!traversable(v)) continue;",
+    "    double tentative = g[u] + w(u,v);",
+    "    if (tentative < g[v]) {",
+    "      parent[v] = u;",
+    "      g[v] = tentative;",
+    "      f[v] = g[v] + h(v,end);",
+    "      open.push({f[v], v});",
+    "    }",
+    "  }",
+    "}",
   ],
 };
 
@@ -81,8 +104,12 @@ export default function PseudocodeTerminal() {
                 : "hover:bg-[#eef1f4] dark:hover:bg-[#2a2a2e]"
             }`}
           >
-            <span className="text-[#6a9955] select-none mr-2">{idx === line ? "▶" : "·"}</span>
-            <span className="text-[#888] dark:text-[#555] mr-2">{idx.toString().padStart(2, "0")}</span>
+            <span className="text-[#6a9955] select-none mr-2">
+              {idx === line ? "▶" : "·"}
+            </span>
+            <span className="text-[#888] dark:text-[#555] mr-2">
+              {idx.toString().padStart(2, "0")}
+            </span>
             <span>{ln}</span>
           </div>
         ))}

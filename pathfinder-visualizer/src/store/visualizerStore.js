@@ -88,7 +88,7 @@ function applyThemeToDom(theme) {
 // ---------- Store ----------
 const useVisualizerStore = create((set, get) => ({
   // Modes
-  mode: "grid", // "grid" | "graph"
+  mode: "graph", // "grid" | "graph"
   setMode: (m) =>
     set({
       mode: m === "graph" ? "graph" : "grid",

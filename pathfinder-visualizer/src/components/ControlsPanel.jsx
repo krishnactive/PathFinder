@@ -61,7 +61,7 @@ export default function ControlsPanel() {
         className="px-2 py-1 rounded bg-gray-200 text-black dark:bg-gray-700 dark:text-gray-100"
         title="Toggle theme"
       >
-        {theme === "dark" ? "🌙 Dark" : "☀ Light"}
+        {/* {theme === "dark" ? "🌙 Dark" : "☀ Light"} */}
       </button>
 
       {/* Mode */}
@@ -84,7 +84,7 @@ export default function ControlsPanel() {
           <input type="number" min={3} max={60} value={c} onChange={(e) => setC(e.target.value)} className="w-16 text-black px-2 py-1 rounded" />
           <button onClick={() => setSize(r, c)} className="bg-slate-200 text-black px-3 py-1 rounded">Apply Size</button>
           <button onClick={generateRandom} className="bg-blue-400 text-black px-3 py-1 rounded" title="Random weighted terrain + walls">Random Maze</button>
-          <button onClick={generateRecursive} className="bg-purple-500 text-white px-3 py-1 rounded" title="Recursive division maze">Recursive Maze</button>
+          {/* <button onClick={generateRecursive} className="bg-purple-500 text-white px-3 py-1 rounded" title="Recursive division maze">Recursive Maze</button> */}
         </>
       )}
 
